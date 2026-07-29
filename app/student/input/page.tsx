@@ -44,6 +44,10 @@ export default function StudentInputPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const requestedMode = new URLSearchParams(window.location.search).get('mode');
+      if (requestedMode === 'camera' || requestedMode === 'upload') {
+        setInputMode(requestedMode);
+      }
       const savedInput = localStorage.getItem('ai-step-input');
       const savedSubject = localStorage.getItem('ai-step-subject');
       if (savedInput) setInputText(savedInput);

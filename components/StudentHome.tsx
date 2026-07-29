@@ -43,11 +43,15 @@ export function StudentHome() {
   ];
 
   const handleCardClick = (id: string, title: string) => {
-    if (id === 'manual') {
-      router.push('/student/input');
-    } else {
-      alert(`'${title}' 기능은 준비 중입니다.`);
+    if (id === 'camera' || id === 'upload') {
+      router.push(`/student/input?mode=${id}`);
+      return;
     }
+    if (id === 'manual') {
+      router.push('/student/input?mode=text');
+      return;
+    }
+    alert(`'${title}' 기능은 준비 중입니다.`);
   };
 
   return (
