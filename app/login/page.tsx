@@ -14,7 +14,7 @@ export default function LoginPage() {
   // Student inputs
   const [grade, setGrade] = useState('5');
   const [classNum, setClassNum] = useState('2');
-  const [studentNum, setStudentNum] = useState('12');
+  const [studentNum, setStudentNum] = useState('11');
   const [studentPassword, setStudentPassword] = useState('1111');
 
   // Admin inputs
@@ -172,6 +172,13 @@ export default function LoginPage() {
               <Sparkles size={18} />
               <span>학생 학습 시작하기</span>
             </button>
+
+            <aside className="demo-accounts" aria-label="체험용 학생 계정">
+              <strong>체험용 계정</strong>
+              <span>1단계: 5학년 2반 11번 / 1111</span>
+              <span>2단계: 5학년 2반 12번 / 1111</span>
+              <span>3단계: 5학년 2반 13번 / 1111</span>
+            </aside>
           </form>
         )}
 

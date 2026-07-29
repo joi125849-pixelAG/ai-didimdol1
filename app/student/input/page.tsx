@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
+import { studentService } from '@/services/studentService';
 import { ArrowLeft, Sparkles, AlertCircle, BookOpen, RefreshCw, Edit, Home } from 'lucide-react';
 
 const SUBJECT_OPTIONS = [
@@ -15,15 +16,6 @@ const SUBJECT_OPTIONS = [
 ];
 
 const DEFAULT_SUPPORT_LEVEL_KEY = 'ai-step-default-support-level';
-
-function getStoredDefaultSupportLevel(): number {
-  if (typeof window === 'undefined') return 2;
-  const stored =
-    localStorage.getItem(DEFAULT_SUPPORT_LEVEL_KEY) ||
-    localStorage.getItem('defaultSupportLevel');
-  const parsed = Number(stored);
-  return [1, 2, 3].includes(parsed) ? parsed : 2;
-}
 
 export default function StudentInputPage() {
   const { user, loading } = useAuth();
@@ -63,7 +55,15 @@ export default function StudentInputPage() {
     setValidationError('');
     setApiError(false);
     setIsAnalyzing(true);
-    const defaultSupportLevel = getStoredDefaultSupportLevel();
+    const latestStudent = user?.student
+      ? studentService.getLatestStudentProfile(user.student.id) ||
+        studentService.getLatestStudentProfile({
+          grade: user.student.grade,
+          classNum: user.student.classNum,
+          studentNum: user.student.studentNum,
+        })
+      : null;
+    const defaultSupportLevel = latestStudent?.defaultSupportLevel ?? 2;
 
     try {
       const response = await fetch('/api/analyze', {
@@ -72,7 +72,7 @@ export default function StudentInputPage() {
         body: JSON.stringify({
           text: inputText.trim(),
           subject: subject,
-          grade: 5,
+          grade: latestStudent?.grade ?? user?.student?.grade ?? 5,
           defaultLevel: defaultSupportLevel,
         }),
       });

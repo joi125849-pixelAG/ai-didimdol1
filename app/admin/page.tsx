@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
-import { AdminHome } from '@/components/AdminHome';
+import { StudentManagement } from '@/components/StudentManagement';
 
 export default function AdminPage() {
   const { user, loading } = useAuth();
@@ -33,7 +33,7 @@ export default function AdminPage() {
     <div className="page-wrapper">
       <Navbar />
       <main className="main-content">
-        <AdminHome />
+        <StudentManagement />
       </main>
     </div>
   );

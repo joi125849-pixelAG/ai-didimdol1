@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
+import { studentService } from '@/services/studentService';
 import {
   ScaffoldAnalysisResponse,
   VisualConnection,
@@ -642,13 +643,7 @@ export default function StudentResultPage() {
     const subject = localStorage.getItem('ai-step-subject') || 'auto';
     const storedResult = localStorage.getItem('ai-step-analysis-result');
     const storedAnswers = localStorage.getItem(THINKING_ANSWERS_KEY);
-    const storedLevel =
-      localStorage.getItem(DEFAULT_SUPPORT_LEVEL_KEY) ||
-      localStorage.getItem('defaultSupportLevel');
-    const parsedLevel = Number(storedLevel);
-
     setSavedSubject(subject);
-    setDefaultSupportLevel([1, 2, 3].includes(parsedLevel) ? parsedLevel : 2);
 
     if (storedResult) {
       try {
@@ -668,6 +663,20 @@ export default function StudentResultPage() {
 
     setIsResultLoaded(true);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user?.student) return;
+    const latest =
+      studentService.getLatestStudentProfile(user.student.id) ||
+      studentService.getLatestStudentProfile({
+        grade: user.student.grade,
+        classNum: user.student.classNum,
+        studentNum: user.student.studentNum,
+      });
+    const level = latest?.defaultSupportLevel ?? user.student.defaultSupportLevel ?? 2;
+    setDefaultSupportLevel(level);
+    localStorage.setItem(DEFAULT_SUPPORT_LEVEL_KEY, String(level));
+  }, [user]);
 
   const difficultWords = useMemo(() => {
     if (!analysisResult?.helpTargets) return [];
