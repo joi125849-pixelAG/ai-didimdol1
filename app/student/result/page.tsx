@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import {
   ScaffoldAnalysisResponse,
-  HelpTarget,
   VisualConnection,
   VisualEntity,
   VisualType,
@@ -16,19 +15,14 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
-  CheckSquare,
-  ChevronLeft,
-  ChevronRight,
   Home,
   Lightbulb,
   Sparkles,
-  Square,
   Volume2,
 } from 'lucide-react';
 
-type HelpStage = 'select' | 'level1' | 'level2' | 'level3' | 'complete';
-
 const THINKING_ANSWERS_KEY = 'ai-step-thinking-answers';
+const DEFAULT_SUPPORT_LEVEL_KEY = 'ai-step-default-support-level';
 
 const SUBJECT_LABEL_MAP: Record<string, string> = {
   korean: '국어',
@@ -37,21 +31,6 @@ const SUBJECT_LABEL_MAP: Record<string, string> = {
   science: '과학',
   auto: '자동 (AI 분석)',
 };
-
-const SCOPE_LABEL_MAP: Record<string, string> = {
-  word: '단어',
-  phrase: '구절',
-  sentence: '문장',
-  paragraph: '문단',
-  whole: '전체 내용',
-};
-
-const STEP_ITEMS = [
-  { id: 'select', number: 0, label: '표현 선택' },
-  { id: 'level1', number: 1, label: '상황 떠올리기' },
-  { id: 'level2', number: 2, label: '쉬운 말로 보기' },
-  { id: 'level3', number: 3, label: '생각 질문' },
-] as const;
 
 const VISUAL_TYPE_SET = new Set<VisualType>([
   'quantity',
@@ -639,13 +618,11 @@ export default function StudentResultPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  const [savedInput, setSavedInput] = useState('');
   const [savedSubject, setSavedSubject] = useState('auto');
   const [analysisResult, setAnalysisResult] = useState<ScaffoldAnalysisResponse | null>(null);
   const [isResultLoaded, setIsResultLoaded] = useState(false);
-  const [currentStage, setCurrentStage] = useState<HelpStage>('select');
-  const [checkedTargetIds, setCheckedTargetIds] = useState<Record<string, boolean>>({});
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const [defaultSupportLevel, setDefaultSupportLevel] = useState(2);
+  const [isComplete, setIsComplete] = useState(false);
   const [thinkingAnswers, setThinkingAnswers] = useState<Record<string, string>>({});
   const [showLevel4, setShowLevel4] = useState(false);
 
@@ -662,13 +639,16 @@ export default function StudentResultPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const input = localStorage.getItem('ai-step-input') || '';
     const subject = localStorage.getItem('ai-step-subject') || 'auto';
     const storedResult = localStorage.getItem('ai-step-analysis-result');
     const storedAnswers = localStorage.getItem(THINKING_ANSWERS_KEY);
+    const storedLevel =
+      localStorage.getItem(DEFAULT_SUPPORT_LEVEL_KEY) ||
+      localStorage.getItem('defaultSupportLevel');
+    const parsedLevel = Number(storedLevel);
 
-    setSavedInput(input);
     setSavedSubject(subject);
+    setDefaultSupportLevel([1, 2, 3].includes(parsedLevel) ? parsedLevel : 2);
 
     if (storedResult) {
       try {
@@ -689,27 +669,26 @@ export default function StudentResultPage() {
     setIsResultLoaded(true);
   }, []);
 
-  const selectedTargets = useMemo(() => {
-    if (!analysisResult) return [];
-
-    return analysisResult.helpTargets.filter((target, index) => {
-      const targetId = target.id || `target-${index}`;
-      return checkedTargetIds[targetId];
-    });
-  }, [analysisResult, checkedTargetIds]);
-
-  const thinkingQuestions = useMemo(() => {
-    if (!analysisResult?.level3Preview.question) return [];
-    return [analysisResult.level3Preview.question];
+  const difficultWords = useMemo(() => {
+    if (!analysisResult?.helpTargets) return [];
+    const seen = new Set<string>();
+    return analysisResult.helpTargets
+      .filter((target) => target.scope === 'word' && target.text && target.simpleMeaning)
+      .filter((target) => {
+        const key = target.text.normalize('NFKC').trim().toLocaleLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 3);
   }, [analysisResult]);
 
   const subjectDisplay = analysisResult?.subject
     ? SUBJECT_LABEL_MAP[analysisResult.subject] || analysisResult.subject
     : SUBJECT_LABEL_MAP[savedSubject] || savedSubject;
 
-  const currentQuestion = thinkingQuestions[questionIndex] || '';
-  const currentAnswerKey = `question-${questionIndex}`;
-  const currentStepIndex = STEP_ITEMS.findIndex((item) => item.id === currentStage);
+  const currentQuestion = analysisResult?.level3Preview.question || '';
+  const currentAnswerKey = 'question-0';
   const rawLevel1 = analysisResult?.level1Preview;
   const visualType: VisualType =
     rawLevel1?.visualType && VISUAL_TYPE_SET.has(rawLevel1.visualType)
@@ -724,16 +703,12 @@ export default function StudentResultPage() {
     rawLevel1?.checkQuestion?.trim() ||
     analysisResult?.level3Preview.question?.trim() ||
     '원문에서 핵심 대상들이 서로 어떤 관계를 맺고 있는지 말해 보세요.';
+  const level3Hint =
+    analysisResult?.wholeTextHelp.situation?.trim() ||
+    '원문에서 질문과 관련된 낱말이나 문장을 다시 찾아보세요.';
   const hasDiagramData =
     visualData.entities.length >= 2 &&
     visualData.connections.length >= 1;
-
-  const toggleTargetCheck = (id: string) => {
-    setCheckedTargetIds((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-  };
 
   const saveThinkingAnswer = (value: string) => {
     setThinkingAnswers((prev) => {
@@ -805,19 +780,6 @@ export default function StudentResultPage() {
     );
   }
 
-  const renderSelectedTargetChips = () => (
-    <div className="selected-target-summary">
-      <span className="selected-target-label">내가 고른 도움</span>
-      <div className="selected-target-chips">
-        {selectedTargets.map((target, index) => (
-          <span className="selected-target-chip" key={target.id || `selected-${index}`}>
-            {target.text}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-
   return (
     <div className="page-wrapper">
       <Navbar />
@@ -827,104 +789,34 @@ export default function StudentResultPage() {
             <span className="card-badge">{subjectDisplay}</span>
             <h1 className="result-page-title">
               <Sparkles size={28} className="title-icon" />
-              단계별 도움
+              맞춤 도움
             </h1>
             <p className="result-page-subtitle">
-              필요한 표현을 고르고, 한 단계씩 천천히 살펴보세요.
+              선생님이 지정한 {defaultSupportLevel}단계 도움을 살펴보세요.
             </p>
           </header>
 
-          {currentStage !== 'complete' && (
-            <nav className="stage-progress" aria-label="도움 단계">
-              {STEP_ITEMS.map((item, index) => {
-                const isActive = item.id === currentStage;
-                const isDone = currentStepIndex > index;
-
-                return (
-                  <div
-                    className={`stage-progress-item ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
-                    key={item.id}
-                  >
-                    <span className="stage-progress-number">
-                      {isDone ? <CheckCircle2 size={18} /> : item.number}
-                    </span>
-                    <span>{item.label}</span>
-                  </div>
-                );
-              })}
-            </nav>
-          )}
-
-          {currentStage === 'select' && (
-            <section className="result-card stage-card" aria-labelledby="select-help-title">
+          {!isComplete && difficultWords.length > 0 && (
+            <section className="result-card difficult-words-card" aria-labelledby="difficult-words-title">
               <div className="stage-card-heading">
-                <span className="stage-number-badge">준비</span>
+                <span className="stage-number-badge">낱말</span>
                 <div>
-                  <h2 id="select-help-title">도움받을 표현 선택</h2>
-                  <p>어려운 단어나 문장을 여러 개 골라도 괜찮아요.</p>
+                  <h2 id="difficult-words-title">어려운 낱말</h2>
+                  <p>원문에 나온 낱말을 쉬운 말로 먼저 살펴보세요.</p>
                 </div>
               </div>
-
-              <div className="original-text-compact">
-                <span>입력한 원문</span>
-                <p>{analysisResult.originalText || savedInput}</p>
-              </div>
-
-              {analysisResult.helpTargets.length === 0 ? (
-                <p className="empty-section-text">추천된 어려운 표현이 없습니다.</p>
-              ) : (
-                <div className="help-targets-list selection-list">
-                  {analysisResult.helpTargets.map((target: HelpTarget, index: number) => {
-                    const targetId = target.id || `target-${index}`;
-                    const isChecked = !!checkedTargetIds[targetId];
-
-                    return (
-                      <div
-                        key={targetId}
-                        className={`help-target-item ${isChecked ? 'checked' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          className="target-checkbox-btn"
-                          onClick={() => toggleTargetCheck(targetId)}
-                          aria-pressed={isChecked}
-                        >
-                          {isChecked ? (
-                            <CheckSquare size={24} className="checkbox-icon checked" />
-                          ) : (
-                            <Square size={24} className="checkbox-icon" />
-                          )}
-                          <span className="target-scope-tag">
-                            {SCOPE_LABEL_MAP[target.scope] || target.scope}
-                          </span>
-                          <span className="target-text">{target.text}</span>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="stage-action-row">
-                <span className="selection-count">
-                  {selectedTargets.length > 0
-                    ? `${selectedTargets.length}개를 선택했어요.`
-                    : '도움받을 표현을 한 개 이상 선택해 주세요.'}
-                </span>
-                <button
-                  type="button"
-                  className="stage-primary-btn"
-                  onClick={() => setCurrentStage('level1')}
-                  disabled={selectedTargets.length === 0}
-                >
-                  1단계 도움 보기
-                  <ArrowRight size={20} />
-                </button>
+              <div className="meaning-cards">
+                {difficultWords.map((target, index) => (
+                  <div className="meaning-card" key={target.id || `word-${index}`}>
+                    <strong>{target.text}</strong>
+                    <p>{target.simpleMeaning}</p>
+                  </div>
+                ))}
               </div>
             </section>
           )}
 
-          {currentStage === 'level1' && (
+          {!isComplete && defaultSupportLevel === 1 && (
             <section className="result-card stage-card stage-one" aria-labelledby="level-one-title">
               <div className="stage-card-heading">
                 <span className="stage-number-badge">1</span>
@@ -933,8 +825,6 @@ export default function StudentResultPage() {
                   <p>그림이나 상황을 머릿속에 천천히 떠올려 보세요.</p>
                 </div>
               </div>
-
-              {renderSelectedTargetChips()}
 
               <div className="stage-info-panel">
                 <span className="stage-content-label">상황 설명</span>
@@ -1006,49 +896,27 @@ export default function StudentResultPage() {
               <div className="stage-action-row split">
                 <button
                   type="button"
-                  className="stage-secondary-btn"
-                  onClick={() => setCurrentStage('select')}
+                  className="understood-btn"
+                  onClick={() => setIsComplete(true)}
                 >
-                  <ArrowLeft size={20} />
-                  표현 다시 고르기
-                </button>
-                <button
-                  type="button"
-                  className="stage-primary-btn"
-                  onClick={() => setCurrentStage('level2')}
-                >
-                  2단계 도움
-                  <ArrowRight size={20} />
+                  <CheckCircle2 size={22} />
+                  이제 이해했어요
                 </button>
               </div>
             </section>
           )}
 
-          {currentStage === 'level2' && (
+          {!isComplete && defaultSupportLevel === 2 && (
             <section className="result-card stage-card stage-two" aria-labelledby="level-two-title">
               <div className="stage-card-heading">
                 <span className="stage-number-badge">2</span>
                 <div>
                   <h2 id="level-two-title">2단계 도움</h2>
-                  <p>고른 표현을 쉬운 말과 짧은 덩어리로 나누어 살펴보세요.</p>
+                  <p>원문을 쉬운 말과 짧은 덩어리로 나누어 살펴보세요.</p>
                 </div>
               </div>
 
-              {renderSelectedTargetChips()}
-
               <div className="stage-two-sections">
-                <div className="stage-info-panel">
-                  <span className="stage-content-label">쉬운 뜻</span>
-                  <div className="meaning-cards">
-                    {selectedTargets.map((target, index) => (
-                      <div className="meaning-card" key={target.id || `meaning-${index}`}>
-                        <strong>{target.text}</strong>
-                        <p>{target.simpleMeaning}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 {analysisResult.level2Preview.chunks.length > 0 && (
                   <div className="stage-info-panel">
                     <span className="stage-content-label">문장 끊어 읽기</span>
@@ -1092,25 +960,17 @@ export default function StudentResultPage() {
               <div className="stage-action-row split">
                 <button
                   type="button"
-                  className="stage-secondary-btn"
-                  onClick={() => setCurrentStage('level1')}
+                  className="understood-btn"
+                  onClick={() => setIsComplete(true)}
                 >
-                  <ArrowLeft size={20} />
-                  1단계로
-                </button>
-                <button
-                  type="button"
-                  className="stage-primary-btn"
-                  onClick={() => setCurrentStage('level3')}
-                >
-                  3단계 생각 질문
-                  <ArrowRight size={20} />
+                  <CheckCircle2 size={22} />
+                  이제 이해했어요
                 </button>
               </div>
             </section>
           )}
 
-          {currentStage === 'level3' && (
+          {!isComplete && defaultSupportLevel === 3 && (
             <section className="result-card stage-card stage-three" aria-labelledby="level-three-title">
               <div className="stage-card-heading">
                 <span className="stage-number-badge">3</span>
@@ -1120,34 +980,17 @@ export default function StudentResultPage() {
                 </div>
               </div>
 
-              {renderSelectedTargetChips()}
-
               <div className="thinking-question-card">
-                <span className="question-counter">
-                  질문 {Math.min(questionIndex + 1, thinkingQuestions.length)} / {thinkingQuestions.length}
-                </span>
+                <span className="question-counter">질문 1개</span>
                 <p>{currentQuestion}</p>
               </div>
 
-              <div className="question-navigation">
-                <button
-                  type="button"
-                  className="question-nav-btn"
-                  onClick={() => setQuestionIndex((prev) => Math.max(0, prev - 1))}
-                  disabled={questionIndex === 0}
-                >
-                  <ChevronLeft size={20} />
-                  이전 질문
-                </button>
-                <button
-                  type="button"
-                  className="question-nav-btn"
-                  onClick={() => setQuestionIndex((prev) => Math.min(thinkingQuestions.length - 1, prev + 1))}
-                  disabled={questionIndex >= thinkingQuestions.length - 1}
-                >
-                  다음 질문
-                  <ChevronRight size={20} />
-                </button>
+              <div className="short-check-question">
+                <Lightbulb size={22} />
+                <div>
+                  <span>작은 단서</span>
+                  <p>{level3Hint}</p>
+                </div>
               </div>
 
               <label className="thinking-answer-field">
@@ -1164,16 +1007,8 @@ export default function StudentResultPage() {
               <div className="stage-action-row split">
                 <button
                   type="button"
-                  className="stage-secondary-btn"
-                  onClick={() => setCurrentStage('level2')}
-                >
-                  <ArrowLeft size={20} />
-                  2단계로
-                </button>
-                <button
-                  type="button"
                   className="understood-btn"
-                  onClick={() => setCurrentStage('complete')}
+                  onClick={() => setIsComplete(true)}
                 >
                   <CheckCircle2 size={22} />
                   이제 이해했어요
@@ -1182,7 +1017,7 @@ export default function StudentResultPage() {
             </section>
           )}
 
-          {currentStage === 'complete' && (
+          {isComplete && (
             <section className="result-card completion-card" aria-labelledby="complete-title">
               <div className="completion-icon">
                 <CheckCircle2 size={52} />
@@ -1228,7 +1063,7 @@ export default function StudentResultPage() {
                   className="stage-secondary-btn"
                   onClick={() => {
                     setShowLevel4(false);
-                    setCurrentStage('select');
+                    setIsComplete(false);
                   }}
                 >
                   <BookOpen size={20} />

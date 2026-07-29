@@ -147,6 +147,8 @@ export const geminiService = {
 1. 최종 정답, 완성된 수학식, 완성된 글을 직접 제공하지 않습니다.
 2. 학생이 현재 읽고 있는 원문이나 문제를 스스로 이해하도록 돕는 디딤돌(Scaffolding) 정보만 제공합니다.
 3. 단어(word), 구절(phrase), 문장(sentence), 문단(paragraph), 전체(whole) 수준의 다양한 어려운 대상(helpTargets)을 발견하고 쉬운 설명(simpleMeaning)을 작성합니다.
+   - 원문에 초등학생이 어려워할 낱말이 있으면 scope가 word인 helpTargets를 1~3개만 만들고 쉬운 말로 설명합니다.
+   - 어려운 낱말이 없으면 scope가 word인 항목을 억지로 만들지 않습니다.
 4. 디딤돌 단계 데이터 구성:
    - subject: korean, math, social, science 중 가장 적절한 과목
    - level1Preview: 원문을 실제 관계로 이해하도록 돕는 구조화된 시각 자료

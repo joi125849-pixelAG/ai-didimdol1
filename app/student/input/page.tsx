@@ -14,6 +14,17 @@ const SUBJECT_OPTIONS = [
   { id: 'science', label: '과학' },
 ];
 
+const DEFAULT_SUPPORT_LEVEL_KEY = 'ai-step-default-support-level';
+
+function getStoredDefaultSupportLevel(): number {
+  if (typeof window === 'undefined') return 2;
+  const stored =
+    localStorage.getItem(DEFAULT_SUPPORT_LEVEL_KEY) ||
+    localStorage.getItem('defaultSupportLevel');
+  const parsed = Number(stored);
+  return [1, 2, 3].includes(parsed) ? parsed : 2;
+}
+
 export default function StudentInputPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -52,6 +63,7 @@ export default function StudentInputPage() {
     setValidationError('');
     setApiError(false);
     setIsAnalyzing(true);
+    const defaultSupportLevel = getStoredDefaultSupportLevel();
 
     try {
       const response = await fetch('/api/analyze', {
@@ -61,7 +73,7 @@ export default function StudentInputPage() {
           text: inputText.trim(),
           subject: subject,
           grade: 5,
-          defaultLevel: 2,
+          defaultLevel: defaultSupportLevel,
         }),
       });
 
@@ -75,6 +87,7 @@ export default function StudentInputPage() {
         localStorage.setItem('ai-step-input', inputText.trim());
         localStorage.setItem('ai-step-subject', subject);
         localStorage.setItem('ai-step-analysis-result', JSON.stringify(data));
+        localStorage.setItem(DEFAULT_SUPPORT_LEVEL_KEY, String(defaultSupportLevel));
       }
 
       router.push('/student/result');
