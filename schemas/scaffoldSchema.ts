@@ -14,7 +14,33 @@ export const scaffoldSchema = z.object({
   ),
   level1Preview: z.object({
     description: z.string(),
-    visualType: z.string(),
+    visualType: z.enum([
+      'quantity',
+      'sequence',
+      'causeEffect',
+      'inputProcessOutput',
+      'comparison',
+      'spatial',
+      'conceptMap',
+    ]),
+    entities: z.array(
+      z.object({
+        label: z.string(),
+        role: z.string(),
+        iconHint: z.string(),
+        quantity: z.number().optional(),
+      })
+    ),
+    connections: z.array(
+      z.object({
+        from: z.string(),
+        to: z.string(),
+        label: z.string(),
+        direction: z.string(),
+      })
+    ),
+    keyFacts: z.array(z.string()),
+    checkQuestion: z.string(),
   }),
   level2Preview: z.object({
     easyRewrite: z.array(z.string()),

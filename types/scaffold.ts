@@ -1,6 +1,14 @@
 export type SubjectType = 'korean' | 'math' | 'social' | 'science';
 export type ScopeType = 'word' | 'phrase' | 'sentence' | 'paragraph' | 'whole';
 export type QuestionType = 'multiple_choice' | 'short_answer';
+export type VisualType =
+  | 'quantity'
+  | 'sequence'
+  | 'causeEffect'
+  | 'inputProcessOutput'
+  | 'comparison'
+  | 'spatial'
+  | 'conceptMap';
 
 export interface HelpTarget {
   id: string;
@@ -11,7 +19,25 @@ export interface HelpTarget {
 
 export interface Level1Preview {
   description: string;
-  visualType: string;
+  visualType: VisualType;
+  entities: VisualEntity[];
+  connections: VisualConnection[];
+  keyFacts: string[];
+  checkQuestion: string;
+}
+
+export interface VisualEntity {
+  label: string;
+  role: string;
+  iconHint: string;
+  quantity?: number;
+}
+
+export interface VisualConnection {
+  from: string;
+  to: string;
+  label: string;
+  direction: string;
 }
 
 export interface Level2Preview {

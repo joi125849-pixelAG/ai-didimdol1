@@ -1589,34 +1589,142 @@ body {
   font-weight: 800;
 }
 
-.visual-placeholder-card {
-  min-height: 190px;
+.level-one-visual {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, #f8fbff 0%, #eff6ff 100%);
+}
+
+.level-one-visual svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 440px;
+}
+
+.visual-entity rect {
+  fill: #ffffff;
+  stroke: #60a5fa;
+  stroke-width: 2;
+  filter: drop-shadow(0 4px 5px rgba(37, 99, 235, 0.12));
+}
+
+.visual-entity.center rect {
+  fill: #dbeafe;
+  stroke: #2563eb;
+  stroke-width: 3;
+}
+
+.visual-entity-icon {
+  fill: #1d4ed8;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.visual-entity-label {
+  fill: #0f172a;
+  font-family: var(--font-primary);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.visual-quantity {
+  fill: #1d4ed8;
+  stroke: #ffffff;
+  paint-order: stroke;
+  stroke-width: 4px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.visual-quantity-group circle {
+  fill: #2563eb;
+}
+
+.visual-connection line {
+  stroke: #2563eb;
+  stroke-width: 2.5;
+}
+
+.visual-connection rect {
+  fill: #ffffff;
+  stroke: #bfdbfe;
+}
+
+.visual-connection text {
+  fill: #1e3a8a;
+  font-family: var(--font-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.visual-arrow-head {
+  fill: #2563eb;
+}
+
+.spatial-scale line {
+  stroke: #64748b;
+  stroke-width: 2;
+}
+
+.visual-entity-chips {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  padding: 1.25rem;
-  border: 2px dashed #93c5fd;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
-  color: #2563eb;
-  text-align: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.visual-placeholder-card strong {
+.visual-entity-chips span {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 9999px;
+  background: #ffffff;
   color: #1e40af;
-  font-size: 1.05rem;
-}
-
-.visual-placeholder-card span {
-  color: #0369a1;
   font-size: 0.9rem;
   font-weight: 700;
 }
 
-.visual-placeholder-card small {
-  color: #64748b;
+.visual-fallback {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-lg);
+  background: #eff6ff;
+}
+
+.visual-fallback-section {
+  min-width: 0;
+  padding: 0.85rem;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.visual-fallback-section:first-child,
+.visual-fallback-section:last-child {
+  grid-column: 1 / -1;
+}
+
+.visual-fallback-section strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #1e40af;
+  font-size: 0.86rem;
+}
+
+.visual-fallback-section p,
+.visual-fallback-section li {
+  color: var(--text-main);
+  font-size: 0.94rem;
+  line-height: 1.55;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.visual-fallback-section ul {
+  padding-left: 1.2rem;
 }
 
 .stage-information-list {
@@ -1933,8 +2041,18 @@ body {
   }
 
   .stage-content-grid,
-  .meaning-cards {
+  .meaning-cards,
+  .visual-fallback {
     grid-template-columns: 1fr;
+  }
+
+  .visual-fallback-section:first-child,
+  .visual-fallback-section:last-child {
+    grid-column: auto;
+  }
+
+  .level-one-visual svg {
+    min-height: 260px;
   }
 
   .stage-card,
