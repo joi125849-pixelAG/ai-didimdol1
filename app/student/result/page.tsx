@@ -82,23 +82,53 @@ function getFilteredVisualData(
   connections: VisualConnection[] | undefined
 ) {
   const seenLabels = new Set<string>();
-  const filteredEntities = (Array.isArray(entities) ? entities : []).filter((entity) => {
-    if (!entity || isExcludedVisualizationValue(entity.label)) return false;
-    const key = entity.label.normalize('NFKC').trim().toLocaleLowerCase();
-    if (seenLabels.has(key)) return false;
-    seenLabels.add(key);
-    return true;
-  });
-  const labels = new Set(filteredEntities.map((entity) => entity.label.trim()));
-  const filteredConnections = (Array.isArray(connections) ? connections : []).filter(
-    (connection) =>
-      connection &&
-      labels.has(connection.from.trim()) &&
-      labels.has(connection.to.trim()) &&
-      !isExcludedVisualizationValue(connection.label)
+  const filteredEntities = (Array.isArray(entities) ? entities : [])
+    .filter((entity) => {
+      if (!entity || isExcludedVisualizationValue(entity.label)) return false;
+      const key = entity.label.normalize('NFKC').trim().toLocaleLowerCase();
+      if (seenLabels.has(key)) return false;
+      seenLabels.add(key);
+      return true;
+    })
+    .map((entity) => ({ ...entity, label: entity.label.trim() }));
+  const normalizedEntities = filteredEntities.map((entity) => ({
+    entity,
+    reference: normalizeEntityReference(entity.label),
+  }));
+  const findEntity = (reference: string) => {
+    const normalizedReference = normalizeEntityReference(reference);
+    const exact = normalizedEntities.find((item) => item.reference === normalizedReference);
+    if (exact) return exact.entity;
+    return normalizedEntities
+      .filter(
+        (item) =>
+          item.reference.length >= 2 &&
+          normalizedReference.length >= 2 &&
+          (item.reference.includes(normalizedReference) ||
+            normalizedReference.includes(item.reference))
+      )
+      .sort((left, right) => right.reference.length - left.reference.length)[0]?.entity;
+  };
+  const filteredConnections = (Array.isArray(connections) ? connections : []).flatMap(
+    (connection) => {
+      if (!connection || isExcludedVisualizationValue(connection.label)) return [];
+      const fromEntity = findEntity(connection.from);
+      const toEntity = findEntity(connection.to);
+      if (!fromEntity || !toEntity || fromEntity.label === toEntity.label) return [];
+      return [{ ...connection, from: fromEntity.label.trim(), to: toEntity.label.trim() }];
+    }
   );
 
   return { entities: filteredEntities, connections: filteredConnections };
+}
+
+function normalizeEntityReference(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, '')
+    .replace(/[\s.,!?·:;'"“”‘’()[\]{}<>/_-]+/g, '')
+    .replace(/(에게서|으로부터|에서는|에게|에서|으로|로|와|과|은|는|이|가|을|를|의|에)$/g, '');
 }
 
 function wrapSvgText(value: string, limit = 9): string[] {
@@ -124,190 +154,418 @@ function wrapSvgText(value: string, limit = 9): string[] {
   }).slice(0, 2);
 }
 
-type VisualPosition = { x: number; y: number };
+type RoleCategory =
+  | 'input'
+  | 'process'
+  | 'output'
+  | 'subject'
+  | 'start'
+  | 'middle'
+  | 'end'
+  | 'group'
+  | 'item'
+  | 'compareA'
+  | 'compareB'
+  | 'center'
+  | 'related'
+  | 'unknown';
 
-function getVisualPositions(type: VisualType, entities: VisualEntity[]): VisualPosition[] {
-  const count = entities.length;
-  if (type === 'conceptMap') {
-    return entities.map((_, index) => {
-      if (index === 0) return { x: 360, y: 200 };
-      const angle = ((index - 1) / Math.max(1, count - 1)) * Math.PI * 2 - Math.PI / 2;
-      return { x: 360 + Math.cos(angle) * 245, y: 200 + Math.sin(angle) * 135 };
-    });
-  }
-  if (type === 'quantity') {
-    return entities.map((_, index) => ({
-      x: 105 + (index % 4) * 170,
-      y: 115 + Math.floor(index / 4) * 175,
-    }));
-  }
-  if (type === 'comparison') {
-    return entities.map((_, index) => ({
-      x: index % 2 === 0 ? 180 : 540,
-      y: 105 + Math.floor(index / 2) * 130,
-    }));
-  }
-  if (type === 'spatial') {
-    return entities.map((_, index) => ({
-      x: 80 + (index * 560) / Math.max(1, count - 1),
-      y: 205 + (index % 2) * 42,
-    }));
-  }
-  if (type === 'inputProcessOutput') {
-    return entities.map((_, index) => ({
-      x: 80 + (index * 560) / Math.max(1, count - 1),
-      y: 200,
-    }));
-  }
-  if (type === 'causeEffect') {
-    return entities.map((_, index) => ({
-      x: 80 + (index * 560) / Math.max(1, count - 1),
-      y: index === 0 || index === count - 1 ? 200 : 155 + (index % 2) * 90,
-    }));
-  }
+type VisualNode = {
+  entity: VisualEntity;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zone: 'left' | 'center' | 'right' | 'neutral';
+  step?: number;
+  emphasized?: boolean;
+};
 
-  return entities.map((_, index) => ({
-    x: 80 + (index * 560) / Math.max(1, count - 1),
-    y: 200,
-  }));
+function normalizeRole(role: string): RoleCategory {
+  const normalized = role.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, '');
+  const rolePatterns: Array<[RoleCategory, RegExp]> = [
+    ['compareA', /(comparea|비교대상a|비교a|첫번째비교)/],
+    ['compareB', /(compareb|비교대상b|비교b|두번째비교)/],
+    ['input', /(input|입력|재료|원인|source|투입)/],
+    ['output', /(output|결과|생성물|산출|result)/],
+    ['process', /(process|과정|변화|행동|처리|작용)/],
+    ['center', /(center|중심개념|핵심개념|중심)/],
+    ['subject', /(subject|대상|인물|주체)/],
+    ['start', /(start|시작|처음)/],
+    ['middle', /(middle|중간)/],
+    ['end', /(end|끝|마지막)/],
+    ['group', /(group|묶음|그룹)/],
+    ['item', /(item|수량대상|개별|항목)/],
+    ['related', /(related|관련개념|관련)/],
+  ];
+  return rolePatterns.find(([, pattern]) => pattern.test(normalized))?.[0] || 'unknown';
 }
 
-function orderVisualEntities(
-  visualType: VisualType,
+function distributeVertically(count: number, top = 105, bottom = 355): number[] {
+  if (count <= 1) return [(top + bottom) / 2];
+  return Array.from({ length: count }, (_, index) => top + (index * (bottom - top)) / (count - 1));
+}
+
+function getGraphCounts(
   entities: VisualEntity[],
   connections: VisualConnection[]
-): VisualEntity[] {
-  if (!['inputProcessOutput', 'causeEffect', 'sequence'].includes(visualType)) {
-    return entities;
-  }
-
+) {
   const inbound = new Map(entities.map((entity) => [entity.label.trim(), 0]));
   const outbound = new Map(entities.map((entity) => [entity.label.trim(), 0]));
   connections.forEach((connection) => {
     inbound.set(connection.to.trim(), (inbound.get(connection.to.trim()) || 0) + 1);
     outbound.set(connection.from.trim(), (outbound.get(connection.from.trim()) || 0) + 1);
   });
+  return { inbound, outbound };
+}
 
-  return [...entities].sort((left, right) => {
-    const rank = (entity: VisualEntity) => {
-      const label = entity.label.trim();
-      const inCount = inbound.get(label) || 0;
-      const outCount = outbound.get(label) || 0;
-      if (inCount === 0 && outCount > 0) return 0;
-      if (inCount > 0 && outCount === 0) return 2;
-      return 1;
-    };
-    return rank(left) - rank(right);
-  });
+function orderSequenceEntities(
+  entities: VisualEntity[],
+  connections: VisualConnection[]
+): VisualEntity[] {
+  const { inbound } = getGraphCounts(entities, connections);
+  const byLabel = new Map(entities.map((entity) => [entity.label.trim(), entity]));
+  const ordered: VisualEntity[] = [];
+  let current =
+    entities.find((entity) => normalizeRole(entity.role) === 'start') ||
+    entities.find((entity) => (inbound.get(entity.label.trim()) || 0) === 0);
+  const visited = new Set<string>();
+
+  while (current && !visited.has(current.label)) {
+    ordered.push(current);
+    visited.add(current.label);
+    const nextConnection = connections.find(
+      (connection) => connection.from === current?.label && !visited.has(connection.to)
+    );
+    current = nextConnection ? byLabel.get(nextConnection.to) : undefined;
+  }
+  return [...ordered, ...entities.filter((entity) => !visited.has(entity.label))];
+}
+
+function buildVisualNodes(
+  visualType: VisualType,
+  entities: VisualEntity[],
+  connections: VisualConnection[]
+): VisualNode[] {
+  const limited = entities.slice(0, 9);
+  const { inbound, outbound } = getGraphCounts(limited, connections);
+  const roleOf = (entity: VisualEntity) => normalizeRole(entity.role);
+  const verticalColumns = (
+    left: VisualEntity[],
+    center: VisualEntity[],
+    right: VisualEntity[]
+  ) => {
+    const makeColumn = (
+      column: VisualEntity[],
+      x: number,
+      zone: VisualNode['zone'],
+      emphasized = false
+    ) =>
+      column.map((entity, index) => ({
+        entity,
+        x,
+        y: distributeVertically(column.length)[index],
+        width: emphasized ? 166 : 132,
+        height: emphasized ? 108 : 82,
+        zone,
+        emphasized,
+      }));
+    return [
+      ...makeColumn(left, 125, 'left'),
+      ...makeColumn(center, 360, 'center', true),
+      ...makeColumn(right, 595, 'right'),
+    ];
+  };
+
+  if (visualType === 'inputProcessOutput' || visualType === 'causeEffect') {
+    const leftRoles =
+      visualType === 'inputProcessOutput'
+        ? new Set<RoleCategory>(['input', 'start'])
+        : new Set<RoleCategory>(['input', 'start']);
+    const centerRoles = new Set<RoleCategory>([
+      'process',
+      'middle',
+      'center',
+      'subject',
+    ]);
+    const rightRoles = new Set<RoleCategory>(['output', 'end']);
+    const left: VisualEntity[] = [];
+    const center: VisualEntity[] = [];
+    const right: VisualEntity[] = [];
+
+    limited.forEach((entity) => {
+      const role = roleOf(entity);
+      const inCount = inbound.get(entity.label) || 0;
+      const outCount = outbound.get(entity.label) || 0;
+      if (leftRoles.has(role) || (inCount === 0 && outCount > 0)) left.push(entity);
+      else if (rightRoles.has(role) || (inCount > 0 && outCount === 0)) right.push(entity);
+      else if (centerRoles.has(role) || (inCount > 0 && outCount > 0)) center.push(entity);
+      else center.push(entity);
+    });
+
+    if (center.length === 0 && limited.length > 2) {
+      const candidate = [...limited].sort(
+        (a, b) =>
+          (inbound.get(b.label) || 0) +
+          (outbound.get(b.label) || 0) -
+          (inbound.get(a.label) || 0) -
+          (outbound.get(a.label) || 0)
+      )[0];
+      if (candidate) {
+        [left, right].forEach((column) => {
+          const index = column.indexOf(candidate);
+          if (index >= 0) column.splice(index, 1);
+        });
+        center.push(candidate);
+      }
+    }
+    return verticalColumns(left, center, right);
+  }
+
+  if (visualType === 'sequence') {
+    const ordered = orderSequenceEntities(limited, connections);
+    return ordered.map((entity, index) => ({
+      entity,
+      x: 80 + (index * 560) / Math.max(1, ordered.length - 1),
+      y: 220,
+      width: 122,
+      height: 92,
+      zone: index === 0 ? 'left' : index === ordered.length - 1 ? 'right' : 'center',
+      step: index + 1,
+      emphasized: roleOf(entity) === 'middle',
+    }));
+  }
+
+  if (visualType === 'quantity') {
+    return limited.map((entity, index) => ({
+      entity,
+      x: limited.length <= 3 ? 140 + index * 220 : 115 + (index % 3) * 245,
+      y: limited.length <= 3 ? 220 : 125 + Math.floor(index / 3) * 155,
+      width: 160,
+      height: 128,
+      zone:
+        roleOf(entity) === 'group'
+          ? 'right'
+          : roleOf(entity) === 'item'
+            ? 'left'
+            : 'neutral',
+    }));
+  }
+
+  if (visualType === 'comparison') {
+    const ordered = [...limited].sort((a, b) => {
+      const rank = (entity: VisualEntity) =>
+        roleOf(entity) === 'compareA' ? 0 : roleOf(entity) === 'compareB' ? 1 : 2;
+      return rank(a) - rank(b);
+    });
+    return ordered.map((entity, index) => ({
+      entity,
+      x: index % 2 === 0 ? 190 : 530,
+      y: 135 + Math.floor(index / 2) * 145,
+      width: 168,
+      height: 96,
+      zone: index % 2 === 0 ? 'left' : 'right',
+      emphasized: index < 2,
+    }));
+  }
+
+  if (visualType === 'spatial') {
+    const numeric = limited.filter((entity) => typeof entity.quantity === 'number');
+    const values = numeric.map((entity) => entity.quantity as number);
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 0;
+    return limited.map((entity, index) => {
+      const role = entity.role.normalize('NFKC').toLocaleLowerCase();
+      let x = 100 + (index * 520) / Math.max(1, limited.length - 1);
+      let y = 225;
+      if (typeof entity.quantity === 'number' && max > min) {
+        x = 100 + ((entity.quantity - min) / (max - min)) * 520;
+      }
+      if (/(왼쪽|서쪽|left)/.test(role)) x = 120;
+      if (/(오른쪽|동쪽|right)/.test(role)) x = 600;
+      if (/(위|북쪽|상단|top|north)/.test(role)) y = 125;
+      if (/(아래|남쪽|하단|bottom|south)/.test(role)) y = 320;
+      return { entity, x, y, width: 126, height: 82, zone: 'neutral' };
+    });
+  }
+
+  const center =
+    limited.find((entity) => roleOf(entity) === 'center') ||
+    [...limited].sort(
+      (a, b) =>
+        (inbound.get(b.label) || 0) +
+        (outbound.get(b.label) || 0) -
+        (inbound.get(a.label) || 0) -
+        (outbound.get(a.label) || 0)
+    )[0];
+  if (!center) return [];
+  const related = limited.filter((entity) => entity !== center);
+  return [
+    { entity: center, x: 360, y: 225, width: 174, height: 112, zone: 'center', emphasized: true },
+    ...related.map((entity, index) => {
+      const angle = (index / Math.max(1, related.length)) * Math.PI * 2 - Math.PI / 2;
+      return {
+        entity,
+        x: 360 + Math.cos(angle) * 250,
+        y: 225 + Math.sin(angle) * 145,
+        width: 128,
+        height: 80,
+        zone: 'neutral' as const,
+      };
+    }),
+  ];
 }
 
 function VisualDiagram({
   visualType,
   entities,
   connections,
+  keyFacts,
 }: {
   visualType: VisualType;
   entities: VisualEntity[];
   connections: VisualConnection[];
+  keyFacts: string[];
 }) {
-  const visibleEntities = orderVisualEntities(visualType, entities, connections).slice(0, 8);
-  const positions = getVisualPositions(visualType, visibleEntities);
-  const positionByLabel = new Map(
-    visibleEntities.map((entity, index) => [entity.label.trim(), positions[index]])
-  );
+  const nodes = buildVisualNodes(visualType, entities, connections);
+  const nodeByLabel = new Map(nodes.map((node) => [node.entity.label, node]));
   const visibleConnections = connections.filter(
-    (connection) =>
-      positionByLabel.has(connection.from.trim()) &&
-      positionByLabel.has(connection.to.trim())
+    (connection) => nodeByLabel.has(connection.from) && nodeByLabel.has(connection.to)
   );
+  const arrowId = `arrow-${visualType}`;
 
   return (
     <div className={`level-one-visual visual-${visualType}`}>
       <svg
-        viewBox="0 0 720 400"
+        viewBox="0 0 720 460"
         role="img"
         aria-label={`${visualType} 형식으로 표현한 원문의 핵심 대상과 관계`}
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
           <marker
-            id={`arrow-${visualType}`}
+            id={arrowId}
             viewBox="0 0 10 10"
             refX="9"
             refY="5"
-            markerWidth="7"
-            markerHeight="7"
+            markerWidth="9"
+            markerHeight="9"
             orient="auto-start-reverse"
           >
             <path d="M 0 0 L 10 5 L 0 10 z" className="visual-arrow-head" />
           </marker>
         </defs>
 
+        {(visualType === 'inputProcessOutput' || visualType === 'causeEffect') && (
+          <g className="visual-zones" aria-hidden="true">
+            <rect x="24" y="34" width="204" height="382" rx="24" className="zone-left" />
+            <rect x="258" y="34" width="204" height="382" rx="24" className="zone-center" />
+            <rect x="492" y="34" width="204" height="382" rx="24" className="zone-right" />
+            <text x="126" y="67" textAnchor="middle">
+              {visualType === 'causeEffect' ? '원인' : '입력'}
+            </text>
+            <text x="360" y="67" textAnchor="middle">과정 · 변화</text>
+            <text x="594" y="67" textAnchor="middle">결과</text>
+          </g>
+        )}
+
         {visualType === 'spatial' && (
           <g className="spatial-scale" aria-hidden="true">
-            <line x1="55" y1="310" x2="665" y2="310" />
-            {[0, 1, 2, 3, 4, 5, 6].map((tick) => (
-              <line key={tick} x1={55 + tick * 101.6} y1="302" x2={55 + tick * 101.6} y2="318" />
-            ))}
+            <line x1="70" y1="380" x2="650" y2="380" />
+            {nodes
+              .filter((node) => typeof node.entity.quantity === 'number')
+              .map((node) => (
+                <g key={node.entity.label}>
+                  <line x1={node.x} y1="370" x2={node.x} y2="390" />
+                  <text x={node.x} y="410" textAnchor="middle">{node.entity.quantity}</text>
+                </g>
+              ))}
           </g>
         )}
 
         {visibleConnections.map((connection, index) => {
-          const from = positionByLabel.get(connection.from.trim());
-          const to = positionByLabel.get(connection.to.trim());
+          const from = nodeByLabel.get(connection.from);
+          const to = nodeByLabel.get(connection.to);
           if (!from || !to) return null;
           const dx = to.x - from.x;
           const dy = to.y - from.y;
           const length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-          const inset = Math.min(66, length / 3);
-          const x1 = from.x + (dx / length) * inset;
-          const y1 = from.y + (dy / length) * inset;
-          const x2 = to.x - (dx / length) * inset;
-          const y2 = to.y - (dy / length) * inset;
+          const fromInset = Math.min(Math.max(from.width, from.height) / 2 + 8, length / 3);
+          const toInset = Math.min(Math.max(to.width, to.height) / 2 + 10, length / 3);
+          const x1 = from.x + (dx / length) * fromInset;
+          const y1 = from.y + (dy / length) * fromInset;
+          const x2 = to.x - (dx / length) * toInset;
+          const y2 = to.y - (dy / length) * toInset;
           const labelX = (x1 + x2) / 2;
-          const labelY = (y1 + y2) / 2 - 9;
-          const label = wrapSvgText(connection.label, 10)[0] || connection.label;
+          const curve = Math.abs(dy) < 18 ? (index % 2 === 0 ? -24 : 24) : 0;
+          const labelY = (y1 + y2) / 2 + curve - 13;
+          const labelLines = wrapSvgText(connection.label, 11);
+          const path = `M ${x1} ${y1} Q ${labelX} ${(y1 + y2) / 2 + curve} ${x2} ${y2}`;
 
           return (
             <g key={`${connection.from}-${connection.to}-${index}`} className="visual-connection">
-              <line
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                markerEnd={`url(#arrow-${visualType})`}
+              <path d={path} markerEnd={`url(#${arrowId})`} />
+              <rect
+                x={labelX - 50}
+                y={labelY - 14}
+                width="100"
+                height={labelLines.length > 1 ? 40 : 27}
+                rx="13"
               />
-              <rect x={labelX - 43} y={labelY - 13} width="86" height="24" rx="12" />
-              <text x={labelX} y={labelY + 4} textAnchor="middle">{label}</text>
+              <text x={labelX} y={labelY + 5} textAnchor="middle">
+                {labelLines.map((line, lineIndex) => (
+                  <tspan key={lineIndex} x={labelX} dy={lineIndex === 0 ? 0 : 14}>{line}</tspan>
+                ))}
+              </text>
             </g>
           );
         })}
 
-        {visibleEntities.map((entity, index) => {
-          const position = positions[index];
-          const labelLines = wrapSvgText(entity.label);
-          const isCenter = visualType === 'conceptMap' && index === 0;
+        {nodes.map((node, index) => {
+          const { entity } = node;
+          const labelLines = wrapSvgText(entity.label, node.emphasized ? 11 : 9);
           const icon = entity.iconHint?.trim().slice(0, 4) || '●';
+          const dotCount =
+            visualType === 'quantity' && typeof entity.quantity === 'number'
+              ? Math.min(12, Math.max(0, Math.round(entity.quantity)))
+              : 0;
 
           return (
             <g
               key={`${entity.label}-${index}`}
-              transform={`translate(${position.x}, ${position.y})`}
-              className={`visual-entity ${isCenter ? 'center' : ''}`}
+              transform={`translate(${node.x}, ${node.y})`}
+              className={`visual-entity zone-${node.zone} ${node.emphasized ? 'center' : ''}`}
             >
-              <rect x="-63" y="-42" width="126" height="84" rx="22" />
-              <text x="0" y="-13" textAnchor="middle" className="visual-entity-icon">{icon}</text>
-              <text x="0" y="11" textAnchor="middle" className="visual-entity-label">
+              <rect
+                x={-node.width / 2}
+                y={-node.height / 2}
+                width={node.width}
+                height={node.height}
+                rx={node.emphasized ? 28 : 20}
+              />
+              {node.step && (
+                <g className="sequence-step" transform={`translate(${-node.width / 2 + 8}, ${-node.height / 2 + 8})`}>
+                  <circle r="16" />
+                  <text textAnchor="middle" y="5">{node.step}</text>
+                </g>
+              )}
+              <text x="0" y={dotCount ? -31 : -13} textAnchor="middle" className="visual-entity-icon">{icon}</text>
+              <text x="0" y={dotCount ? -5 : 11} textAnchor="middle" className="visual-entity-label">
                 {labelLines.map((line, lineIndex) => (
                   <tspan key={lineIndex} x="0" dy={lineIndex === 0 ? 0 : 17}>{line}</tspan>
                 ))}
               </text>
-              {visualType === 'quantity' && typeof entity.quantity === 'number' && (
+              {dotCount > 0 && (
                 <g className="visual-quantity-group">
-                  {Array.from({ length: Math.min(5, Math.max(0, Math.round(entity.quantity))) }, (_, dot) => (
-                    <circle key={dot} cx={-20 + dot * 10} cy="31" r="3.5" />
+                  {Array.from({ length: dotCount }, (_, dot) => (
+                    <circle
+                      key={dot}
+                      cx={-35 + (dot % 6) * 14}
+                      cy={29 + Math.floor(dot / 6) * 14}
+                      r="5"
+                    />
                   ))}
-                  <text x="48" y="-27" textAnchor="middle" className="visual-quantity">
+                  <text x={node.width / 2 - 21} y={-node.height / 2 + 23} textAnchor="middle" className="visual-quantity">
                     {entity.quantity}
                   </text>
                 </g>
@@ -315,6 +573,16 @@ function VisualDiagram({
             </g>
           );
         })}
+
+        {visualType === 'comparison' && keyFacts.length > 0 && (
+          <g className="comparison-facts">
+            <rect x="118" y="382" width="484" height="58" rx="18" />
+            <text x="360" y="404" textAnchor="middle">비교하며 살펴볼 점</text>
+            <text x="360" y="426" textAnchor="middle">
+              {wrapSvgText(keyFacts[0], 34)[0]}
+            </text>
+          </g>
+        )}
       </svg>
     </div>
   );
@@ -456,7 +724,9 @@ export default function StudentResultPage() {
     rawLevel1?.checkQuestion?.trim() ||
     analysisResult?.level3Preview.question?.trim() ||
     '원문에서 핵심 대상들이 서로 어떤 관계를 맺고 있는지 말해 보세요.';
-  const hasDiagramData = visualData.entities.length >= 2 && visualData.connections.length >= 1;
+  const hasDiagramData =
+    visualData.entities.length >= 2 &&
+    visualData.connections.length >= 1;
 
   const toggleTargetCheck = (id: string) => {
     setCheckedTargetIds((prev) => ({
@@ -676,6 +946,7 @@ export default function StudentResultPage() {
                   visualType={visualType}
                   entities={visualData.entities}
                   connections={visualData.connections}
+                  keyFacts={level1KeyFacts}
                 />
               ) : (
                 <VisualFallback

@@ -1592,7 +1592,7 @@ body {
 .level-one-visual {
   width: 100%;
   overflow: hidden;
-  border: 1px solid #bfdbfe;
+  border: 2px solid #bfdbfe;
   border-radius: var(--radius-lg);
   background: linear-gradient(145deg, #f8fbff 0%, #eff6ff 100%);
 }
@@ -1601,20 +1601,34 @@ body {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 440px;
+  max-height: 520px;
 }
 
 .visual-entity rect {
   fill: #ffffff;
-  stroke: #60a5fa;
-  stroke-width: 2;
-  filter: drop-shadow(0 4px 5px rgba(37, 99, 235, 0.12));
+  stroke: #2563eb;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 5px 7px rgba(30, 64, 175, 0.18));
+}
+
+.visual-entity.zone-left rect {
+  fill: #eff6ff;
+  stroke: #1d4ed8;
+}
+
+.visual-entity.zone-center rect {
+  fill: #fef3c7;
+  stroke: #d97706;
+}
+
+.visual-entity.zone-right rect {
+  fill: #ecfdf5;
+  stroke: #059669;
 }
 
 .visual-entity.center rect {
-  fill: #dbeafe;
-  stroke: #2563eb;
-  stroke-width: 3;
+  stroke-width: 4;
+  filter: drop-shadow(0 8px 10px rgba(30, 64, 175, 0.24));
 }
 
 .visual-entity-icon {
@@ -1643,30 +1657,98 @@ body {
   fill: #2563eb;
 }
 
-.visual-connection line {
-  stroke: #2563eb;
-  stroke-width: 2.5;
+.visual-connection path {
+  fill: none;
+  stroke: #1e40af;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .visual-connection rect {
   fill: #ffffff;
-  stroke: #bfdbfe;
+  stroke: #1d4ed8;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 2px 3px rgba(30, 64, 175, 0.18));
 }
 
 .visual-connection text {
   fill: #1e3a8a;
   font-family: var(--font-primary);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 800;
 }
 
 .visual-arrow-head {
-  fill: #2563eb;
+  fill: #1e3a8a;
+}
+
+.visual-zones rect {
+  stroke-width: 1.5;
+  stroke-dasharray: 7 6;
+}
+
+.visual-zones .zone-left {
+  fill: rgba(219, 234, 254, 0.55);
+  stroke: #60a5fa;
+}
+
+.visual-zones .zone-center {
+  fill: rgba(254, 243, 199, 0.6);
+  stroke: #f59e0b;
+}
+
+.visual-zones .zone-right {
+  fill: rgba(209, 250, 229, 0.55);
+  stroke: #34d399;
+}
+
+.visual-zones text {
+  fill: #334155;
+  font-family: var(--font-primary);
+  font-size: 15px;
+  font-weight: 900;
 }
 
 .spatial-scale line {
-  stroke: #64748b;
+  stroke: #334155;
+  stroke-width: 3;
+}
+
+.spatial-scale text {
+  fill: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sequence-step circle {
+  fill: #1d4ed8;
+  stroke: #ffffff;
   stroke-width: 2;
+}
+
+.sequence-step text {
+  fill: #ffffff;
+  font-family: var(--font-primary);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.comparison-facts rect {
+  fill: #faf5ff;
+  stroke: #8b5cf6;
+  stroke-width: 2;
+}
+
+.comparison-facts text {
+  fill: #5b21b6;
+  font-family: var(--font-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.comparison-facts text:first-of-type {
+  font-weight: 900;
 }
 
 .visual-entity-chips {
