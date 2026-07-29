@@ -1610,6 +1610,81 @@ body {
   gap: 0.1rem;
 }
 
+.input-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.input-mode-tabs button,
+.image-input-actions button {
+  min-height: 44px;
+  padding: 0.65rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.7rem;
+  background: #fff;
+  color: #475569;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.input-mode-tabs button.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.image-input-panel {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px dashed #94a3b8;
+  border-radius: 0.85rem;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.image-input-panel img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 0.65rem;
+}
+
+.image-input-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.quantity-distribution rect {
+  fill: #ffffff;
+  stroke: #94a3b8;
+  stroke-width: 2;
+}
+
+.quantity-distribution circle {
+  fill: #2563eb;
+}
+
+.quantity-distribution text {
+  fill: #334155;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .input-mode-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .image-input-actions {
+    flex-direction: column;
+  }
+}
+
 .demo-accounts strong {
   color: #475569;
   font-size: 0.8rem;

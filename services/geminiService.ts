@@ -128,7 +128,8 @@ export const geminiService = {
     text: string,
     subjectHint?: string,
     grade?: number,
-    defaultLevel?: number
+    defaultLevel?: number,
+    image?: { data: string; mimeType: string }
   ): Promise<ScaffoldAnalysisResponse> {
     const apiKey = process.env.GEMINI_API_KEY;
     const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -182,6 +183,15 @@ ${subjectHint && subjectHint !== 'auto' ? `[선택한 과목 힌트]: ${subjectH
 ${defaultLevel ? `[기본 디딤돌 레벨]: Level ${defaultLevel}` : ''}
 
 이 원문을 초등학생 눈높이의 디딤돌 구조 JSON으로 분석해 주세요.
+상태나 결과를 나타내는 표현은 원문 의미를 유지하면서 자연스러운 명사형으로 정리하세요
+(예: '경사가 급함', '발달함'). 원문에 없는 사실은 만들지 마세요.
+${image ? `
+[사진 분석 규칙]
+- 사진에서 가장 중심적인 한 문제 또는 지문만 읽어 분석합니다.
+- 글자가 불명확하면 내용을 지어내지 않습니다.
+- 사진 속 원문을 originalText에 정확히 옮기고, 읽기 어려우면 빈 문자열로 반환합니다.
+- 최종 정답이나 완성된 계산식을 직접 제공하지 않습니다.
+` : ''}
 `;
 
     const ai = new GoogleGenAI({ apiKey: apiKey || '' });
@@ -189,7 +199,15 @@ ${defaultLevel ? `[기본 디딤돌 레벨]: Level ${defaultLevel}` : ''}
     try {
       const response = await ai.models.generateContent({
         model: modelName,
-        contents: userPrompt,
+        contents: image
+          ? [{
+              role: 'user',
+              parts: [
+                { inlineData: { mimeType: image.mimeType, data: image.data } },
+                { text: userPrompt },
+              ],
+            }]
+          : userPrompt,
         config: {
           systemInstruction,
           responseMimeType: 'application/json',

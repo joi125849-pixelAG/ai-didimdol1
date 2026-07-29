@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
@@ -26,6 +26,11 @@ export default function StudentInputPage() {
   const [validationError, setValidationError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [apiError, setApiError] = useState(false);
+  const [inputMode, setInputMode] = useState<'text' | 'camera' | 'upload'>('text');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading) {
@@ -46,9 +51,46 @@ export default function StudentInputPage() {
     }
   }, []);
 
+  useEffect(() => () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
+
+  const clearImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview('');
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (uploadInputRef.current) uploadInputRef.current.value = '';
+  };
+
+  const selectImage = (file?: File) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setValidationError('지원하지 않는 사진 형식이에요.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setValidationError('사진 크기는 8MB 이하로 올려주세요.');
+      return;
+    }
+    clearImage();
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setValidationError('');
+  };
+
+  const fileToBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleStartAnalysis = async () => {
-    if (!inputText.trim()) {
-      setValidationError('도움받을 내용을 입력해 주세요.');
+    const isImageMode = inputMode !== 'text';
+    if ((!isImageMode && !inputText.trim()) || (isImageMode && !imageFile)) {
+      setValidationError(isImageMode ? '분석할 사진을 선택해 주세요.' : '도움받을 내용을 입력해 주세요.');
       return;
     }
 
@@ -66,11 +108,12 @@ export default function StudentInputPage() {
     const defaultSupportLevel = latestStudent?.defaultSupportLevel ?? 2;
 
     try {
-      const response = await fetch('/api/analyze', {
+      const imageData = imageFile ? await fileToBase64(imageFile) : '';
+      const response = await fetch(isImageMode ? '/api/analyze-image' : '/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: inputText.trim(),
+          ...(isImageMode ? { imageData, mimeType: imageFile?.type } : { text: inputText.trim() }),
           subject: subject,
           grade: latestStudent?.grade ?? user?.student?.grade ?? 5,
           defaultLevel: defaultSupportLevel,
@@ -78,13 +121,14 @@ export default function StudentInputPage() {
       });
 
       if (!response.ok) {
-        throw new Error('API request failed');
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'API request failed');
       }
 
       const data = await response.json();
 
       if (typeof window !== 'undefined') {
-        localStorage.setItem('ai-step-input', inputText.trim());
+        localStorage.setItem('ai-step-input', isImageMode ? data.originalText || '' : inputText.trim());
         localStorage.setItem('ai-step-subject', subject);
         localStorage.setItem('ai-step-analysis-result', JSON.stringify(data));
         localStorage.setItem(DEFAULT_SUPPORT_LEVEL_KEY, String(defaultSupportLevel));
@@ -93,7 +137,14 @@ export default function StudentInputPage() {
       router.push('/student/result');
     } catch (err) {
       console.error('Analysis request error:', err);
-      setApiError(true);
+      if (isImageMode) {
+        setValidationError(
+          err instanceof Error && err.message.includes('글자를 읽기')
+            ? err.message
+            : '사진 분석 중 문제가 생겼어요. 직접 입력을 이용해 주세요.',
+        );
+      }
+      setApiError(!isImageMode);
     } finally {
       setIsAnalyzing(false);
     }
@@ -191,8 +242,29 @@ export default function StudentInputPage() {
                 </div>
               </div>
 
+              <div className="input-mode-tabs" aria-label="입력 방식">
+                <button type="button" className={inputMode === 'text' ? 'active' : ''} onClick={() => setInputMode('text')}>직접 입력</button>
+                <button type="button" className={inputMode === 'camera' ? 'active' : ''} onClick={() => { setInputMode('camera'); cameraInputRef.current?.click(); }}>사진 촬영</button>
+                <button type="button" className={inputMode === 'upload' ? 'active' : ''} onClick={() => { setInputMode('upload'); uploadInputRef.current?.click(); }}>이미지 업로드</button>
+              </div>
+              <input ref={cameraInputRef} hidden type="file" accept="image/*" capture="environment" onChange={(event) => selectImage(event.target.files?.[0])} />
+              <input ref={uploadInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectImage(event.target.files?.[0])} />
+              {inputMode !== 'text' && (
+                <div className="image-input-panel">
+                  {imagePreview ? (
+                    <>
+                      <img src={imagePreview} alt="선택한 학습 사진 미리보기" />
+                      <div className="image-input-actions">
+                        <button type="button" disabled={isAnalyzing} onClick={() => (inputMode === 'camera' ? cameraInputRef : uploadInputRef).current?.click()}>다른 사진 선택</button>
+                        <button type="button" disabled={isAnalyzing} onClick={clearImage}>사진 삭제</button>
+                      </div>
+                    </>
+                  ) : <p>촬영하거나 업로드할 사진을 선택해 주세요.</p>}
+                </div>
+              )}
+
               {/* Textarea Input */}
-              <div className="textarea-section">
+              <div className="textarea-section" hidden={inputMode !== 'text'}>
                 <label className="section-label">원문 내용</label>
                 <textarea
                   className={`input-textarea ${validationError ? 'error-border' : ''}`}
@@ -219,7 +291,7 @@ export default function StudentInputPage() {
               {isAnalyzing && (
                 <div className="analyzing-banner">
                   <div className="small-spinner"></div>
-                  <span>입력한 내용을 살펴보고 있어요.</span>
+                  <span>{inputMode === 'text' ? '입력한 내용을 살펴보고 있어요.' : '사진 속 내용을 살펴보고 있어요.'}</span>
                 </div>
               )}
 
@@ -232,7 +304,7 @@ export default function StudentInputPage() {
                   disabled={isAnalyzing}
                 >
                   <Sparkles size={22} />
-                  <span>{isAnalyzing ? '분석 진행 중...' : '내용 분석을 시작할게요.'}</span>
+                  <span>{isAnalyzing ? '분석 진행 중...' : inputMode === 'text' ? '내용 분석을 시작할게요.' : '사진 분석 시작'}</span>
                 </button>
                 <button
                   onClick={handleGoHome}

@@ -299,6 +299,18 @@ function buildVisualNodes(
         center.push(candidate);
       }
     }
+    if (visualType === 'causeEffect' && center.length === 0) {
+      return [
+        ...left.map((entity, index) => ({
+          entity, x: 190, y: distributeVertically(left.length)[index],
+          width: 150, height: 90, zone: 'left' as const,
+        })),
+        ...right.map((entity, index) => ({
+          entity, x: 530, y: distributeVertically(right.length)[index],
+          width: 150, height: 90, zone: 'right' as const,
+        })),
+      ];
+    }
     return verticalColumns(left, center, right);
   }
 
@@ -413,6 +425,17 @@ function VisualDiagram({
     (connection) => nodeByLabel.has(connection.from) && nodeByLabel.has(connection.to)
   );
   const arrowId = `arrow-${visualType}`;
+  const hasCenter = nodes.some((node) => node.zone === 'center');
+  const twoColumnCause = visualType === 'causeEffect' && !hasCenter;
+  const quantityItem = visualType === 'quantity'
+    ? entities.find((entity) => normalizeRole(entity.role) === 'item' && Number(entity.quantity) > 0)
+    : undefined;
+  const quantityGroup = visualType === 'quantity'
+    ? entities.find((entity) => normalizeRole(entity.role) === 'group' && Number(entity.quantity) > 1)
+    : undefined;
+  const groupCount = Math.min(8, Math.round(quantityGroup?.quantity || 0));
+  const totalDots = Math.min(48, Math.round(quantityItem?.quantity || 0));
+  const showQuantityDistribution = groupCount > 1 && totalDots > 0;
 
   return (
     <div className={`level-one-visual visual-${visualType}`}>
@@ -438,14 +461,35 @@ function VisualDiagram({
 
         {(visualType === 'inputProcessOutput' || visualType === 'causeEffect') && (
           <g className="visual-zones" aria-hidden="true">
-            <rect x="24" y="34" width="204" height="382" rx="24" className="zone-left" />
-            <rect x="258" y="34" width="204" height="382" rx="24" className="zone-center" />
-            <rect x="492" y="34" width="204" height="382" rx="24" className="zone-right" />
-            <text x="126" y="67" textAnchor="middle">
+            <rect x={twoColumnCause ? 44 : 24} y="34" width={twoColumnCause ? 292 : 204} height="382" rx="24" className="zone-left" />
+            {!twoColumnCause && <rect x="258" y="34" width="204" height="382" rx="24" className="zone-center" />}
+            <rect x={twoColumnCause ? 384 : 492} y="34" width={twoColumnCause ? 292 : 204} height="382" rx="24" className="zone-right" />
+            <text x={twoColumnCause ? 190 : 126} y="67" textAnchor="middle">
               {visualType === 'causeEffect' ? '원인' : '입력'}
             </text>
-            <text x="360" y="67" textAnchor="middle">과정 · 변화</text>
-            <text x="594" y="67" textAnchor="middle">결과</text>
+            {!twoColumnCause && <text x="360" y="67" textAnchor="middle">과정 · 변화</text>}
+            <text x={twoColumnCause ? 530 : 594} y="67" textAnchor="middle">결과</text>
+          </g>
+        )}
+
+        {showQuantityDistribution && (
+          <g className="quantity-distribution">
+            <text x="360" y="48" textAnchor="middle">{quantityItem?.label} {totalDots}개 · {quantityGroup?.label} {groupCount}그룹</text>
+            {Array.from({ length: groupCount }, (_, groupIndex) => {
+              const columns = Math.min(4, groupCount);
+              const x = 95 + (groupIndex % columns) * 175;
+              const y = 105 + Math.floor(groupIndex / columns) * 170;
+              const count = Math.floor(totalDots / groupCount) + (groupIndex < totalDots % groupCount ? 1 : 0);
+              return (
+                <g key={groupIndex} transform={`translate(${x},${y})`}>
+                  <rect width="145" height="135" rx="18" />
+                  <text x="72" y="25" textAnchor="middle">{groupIndex + 1}번 그룹</text>
+                  {Array.from({ length: count }, (_, dot) => (
+                    <circle key={dot} cx={27 + (dot % 6) * 18} cy={50 + Math.floor(dot / 6) * 18} r="6" />
+                  ))}
+                </g>
+              );
+            })}
           </g>
         )}
 
@@ -478,7 +522,8 @@ function VisualDiagram({
           const y2 = to.y - (dy / length) * toInset;
           const labelX = (x1 + x2) / 2;
           const curve = Math.abs(dy) < 18 ? (index % 2 === 0 ? -24 : 24) : 0;
-          const labelY = (y1 + y2) / 2 + curve - 13;
+          const labelOffset = visibleConnections.length > 2 ? ((index % 3) - 1) * 18 : 0;
+          const labelY = (y1 + y2) / 2 + curve + labelOffset - 13;
           const labelLines = wrapSvgText(connection.label, 11);
           const path = `M ${x1} ${y1} Q ${labelX} ${(y1 + y2) / 2 + curve} ${x2} ${y2}`;
 
@@ -501,7 +546,7 @@ function VisualDiagram({
           );
         })}
 
-        {nodes.map((node, index) => {
+        {!showQuantityDistribution && nodes.map((node, index) => {
           const { entity } = node;
           const labelLines = wrapSvgText(entity.label, node.emphasized ? 11 : 9);
           const icon = entity.iconHint?.trim().slice(0, 4) || '●';
